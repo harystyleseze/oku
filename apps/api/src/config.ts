@@ -27,6 +27,12 @@ export const config = {
   ffmpegPath: process.env.FFMPEG_PATH ?? "ffmpeg",
   ffprobePath: process.env.FFPROBE_PATH ?? "ffprobe",
   fontFile: process.env.FONT_FILE || undefined,
+  transcription: {
+    apiKey: process.env.TRANSCRIPTION_API_KEY || "",
+    baseUrl: process.env.TRANSCRIPTION_BASE_URL || "https://api.openai.com/v1",
+    model: process.env.TRANSCRIPTION_MODEL || "whisper-1",
+    language: process.env.TRANSCRIPTION_LANGUAGE || undefined,
+  },
   ice: {
     stunUrl: process.env.STUN_URL ?? "stun:stun.l.google.com:19302",
     turnUrl: process.env.TURN_URL || undefined,

@@ -8,6 +8,8 @@ import { chunks, conversations, exports, participants, tracks } from "./schema.j
 import { storage, keys } from "./storage.js";
 import { runFfmpeg, runFfmpegToBuffer, probeDurationMs, findFontFile, escapeFilterText, escapeFilterPath } from "./ffmpeg.js";
 import { presetById, THEMES, type Theme } from "./presets.js";
+import { buildCaptionsAss, loadTranscript, transcriptionEnabled } from "./transcription.js";
+import { enqueue } from "./queue.js";
 
 const PEAK_BUCKETS = 1500;
 const PEAK_RATE = 8000; // Hz, mono s16le — plenty for a waveform picture
@@ -116,9 +118,16 @@ export async function processConversation(conversationId: string): Promise<void>
 
       await db
         .update(conversations)
-        .set({ status: "ready", durationMs, mixedKey: keys.mixed(conversationId), peaksKey: keys.peaks(conversationId) })
+        .set({
+          status: "ready",
+          durationMs,
+          mixedKey: keys.mixed(conversationId),
+          peaksKey: keys.peaks(conversationId),
+          transcriptStatus: transcriptionEnabled() ? "queued" : "none",
+        })
         .where(eq(conversations.id, conversationId));
     });
+    if (transcriptionEnabled()) enqueue({ kind: "transcribe", conversationId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await db.update(conversations).set({ status: "failed", error: message }).where(eq(conversations.id, conversationId));
@@ -199,7 +208,11 @@ export async function renderExport(exportId: string): Promise<void> {
 
       const bandGap = Math.round(H * 0.03) + nameSize;
       const bandAreaTop = Math.max(titleBlockBottom + Math.round(H * 0.05) + nameSize, Math.round(H * 0.3));
-      const bandAreaBottom = H - margin - nameSize - Math.round(H * 0.04);
+      // Captions (when the transcript exists and the host asked for them) take the strip above the mark.
+      const transcript = job.captions && job.conversation.transcriptKey ? await loadTranscript(job.conversation.transcriptKey) : null;
+      const captionSize = Math.round(Math.min(W, H) * (H > W ? 0.05 : 0.04));
+      const captionStrip = transcript ? captionSize * 3 : 0;
+      const bandAreaBottom = H - margin - nameSize - Math.round(H * 0.04) - captionStrip;
       const bandHeight = Math.min(
         Math.round(H * 0.18),
         Math.floor((bandAreaBottom - bandAreaTop - bandGap * (speakers.length - 1)) / speakers.length),
@@ -240,8 +253,25 @@ export async function renderExport(exportId: string): Promise<void> {
 
       parts.push(
         `[${last}]drawtext=${fontOpt}textfile='${escapeFilterPath(titleFile)}':fontsize=${titleSize}:fontcolor=${theme.text}:x=${margin}:y=${titleTop}:line_spacing=${Math.round(titleSize * 0.2)}[t]`,
-        `[t]drawtext=${fontOpt}text='oku':fontsize=${nameSize}:fontcolor=${theme.muted}:x=${margin}:y=${H - margin}[vout]`,
+        `[t]drawtext=${fontOpt}text='oku':fontsize=${nameSize}:fontcolor=${theme.muted}:x=${margin}:y=${H - margin}[marked]`,
       );
+      if (transcript) {
+        const ass = buildCaptionsAss(transcript, job.startMs, job.endMs, {
+          width: W,
+          height: H,
+          fontSize: captionSize,
+          marginBottom: margin + nameSize * 2,
+          marginSide: margin,
+          textColor: theme.text,
+          fontFile: font,
+        });
+        const assFile = path.join(dir, "captions.ass");
+        await fsp.writeFile(assFile, ass, "utf8");
+        const fontsDir = font ? `:fontsdir='${escapeFilterPath(path.dirname(font))}'` : "";
+        parts.push(`[marked]subtitles=filename='${escapeFilterPath(assFile)}'${fontsDir}[vout]`);
+      } else {
+        parts.push("[marked]null[vout]");
+      }
 
       const mix =
         speakers.length === 1

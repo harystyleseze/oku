@@ -11,6 +11,7 @@ import { storage, keys } from "./storage.js";
 import { PRESETS, THEMES, presetById } from "./presets.js";
 import { processIfReady } from "./signaling.js";
 import { enqueue } from "./queue.js";
+import { loadTranscript, transcriptToSrt, transcriptToText, transcriptionEnabled } from "./transcription.js";
 
 export const router = Router();
 
@@ -77,7 +78,7 @@ function publicUser(u: { id: string; email: string; displayName: string }) {
 // ---------- Presets ----------
 
 router.get("/presets", (_req, res) => {
-  res.json({ presets: PRESETS, themes: THEMES });
+  res.json({ presets: PRESETS, themes: THEMES, features: { transcription: transcriptionEnabled() } });
 });
 
 // ---------- Rooms ----------
@@ -272,6 +273,38 @@ router.get("/conversations/:id/peaks", requireUser, async (req, res) => {
   await streamObject(req, res, c.peaksKey, "application/json");
 });
 
+// ---------- Transcript ----------
+
+router.get("/conversations/:id/transcript", requireUser, async (req, res) => {
+  const c = await ownedConversation(req, res);
+  if (!c) return;
+  if (!c.transcriptKey) return fail(res, 404, "No transcript yet.");
+  await streamObject(req, res, c.transcriptKey, "application/json");
+});
+
+router.get("/conversations/:id/transcript.:format(txt|srt)", requireUser, async (req, res) => {
+  const c = await ownedConversation(req, res);
+  if (!c) return;
+  if (!c.transcriptKey) return fail(res, 404, "No transcript yet.");
+  const t = await loadTranscript(c.transcriptKey);
+  const srt = req.params.format === "srt";
+  res.setHeader("Content-Type", srt ? "application/x-subrip; charset=utf-8" : "text/plain; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeName(c.title)}.${req.params.format}"`);
+  res.send(srt ? transcriptToSrt(t) : transcriptToText(t));
+});
+
+// Start (or retry) transcription for a conversation.
+router.post("/conversations/:id/transcribe", requireUser, async (req, res) => {
+  const c = await ownedConversation(req, res);
+  if (!c) return;
+  if (!transcriptionEnabled()) return fail(res, 409, "Transcription is not set up on this server.");
+  if (c.status !== "ready") return fail(res, 409, "The conversation is still processing.");
+  if (c.transcriptStatus === "queued" || c.transcriptStatus === "running") return res.json({ ok: true });
+  await db.update(conversations).set({ transcriptStatus: "queued", transcriptError: null }).where(eq(conversations.id, c.id));
+  enqueue({ kind: "transcribe", conversationId: c.id });
+  res.json({ ok: true });
+});
+
 // Mixed audio, or one speaker's track: /media/mixed or /media/<participantId>
 router.get("/conversations/:id/media/:which", requireUser, async (req, res) => {
   const c = await ownedConversation(req, res);
@@ -304,6 +337,7 @@ router.post("/conversations/:id/exports", requireUser, async (req, res) => {
       endMs: z.number().int().min(0),
       title: z.string().trim().min(1, "Give the clip a title.").max(120),
       theme: z.enum(["night", "day"]).default("night"),
+      captions: z.boolean().default(false),
     }),
     req.body,
     res,
@@ -318,7 +352,15 @@ router.post("/conversations/:id/exports", requireUser, async (req, res) => {
   }
   const [job] = await db
     .insert(exports)
-    .values({ conversationId: c.id, platform: preset.id, startMs: body.startMs, endMs, title: body.title, theme: body.theme })
+    .values({
+      conversationId: c.id,
+      platform: preset.id,
+      startMs: body.startMs,
+      endMs,
+      title: body.title,
+      theme: body.theme,
+      captions: body.captions && c.transcriptStatus === "ready",
+    })
     .returning();
   enqueue({ kind: "export", exportId: job.id });
   res.status(201).json({ export: job });

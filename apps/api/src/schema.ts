@@ -37,6 +37,7 @@ export const rooms = pgTable(
 );
 
 export const conversationStatus = pgEnum("conversation_status", ["recording", "processing", "ready", "failed"]);
+export const transcriptStatus = pgEnum("transcript_status", ["none", "queued", "running", "ready", "failed"]);
 
 export const conversations = pgTable(
   "conversations",
@@ -51,6 +52,9 @@ export const conversations = pgTable(
     mixedKey: text("mixed_key"), // storage key of the mixed-down audio (m4a)
     peaksKey: text("peaks_key"), // storage key of waveform peaks JSON
     error: text("error"),
+    transcriptStatus: transcriptStatus("transcript_status").notNull().default("none"),
+    transcriptKey: text("transcript_key"), // storage key of transcript JSON
+    transcriptError: text("transcript_error"),
   },
   (t) => [index("conversations_room_idx").on(t.roomId)],
 );
@@ -108,6 +112,7 @@ export const exports = pgTable(
     endMs: integer("end_ms").notNull(),
     title: text("title").notNull(),
     theme: text("theme").notNull().default("night"),
+    captions: boolean("captions").notNull().default(false),
     status: exportStatus("status").notNull().default("queued"),
     outputKey: text("output_key"),
     error: text("error"),

@@ -489,3 +489,78 @@ main.page {
   background: var(--ink);
   color: #fff;
 }
+
+/* ---------- transcript ---------- */
+
+.transcript {
+  display: grid;
+  gap: 10px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.t-line {
+  border-left: 3px solid var(--line);
+  padding: 4px 0 4px 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.t-line.active {
+  background: #f7f7fa;
+}
+
+.t-meta {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.t-time {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.t-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 10px;
+}
+
+.t-actions button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.t-actions button:hover,
+.t-time:hover {
+  color: var(--ink);
+}
+
+.t-text {
+  max-width: none;
+  line-height: 1.6;
+}
+
+.t-word {
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.t-word.on {
+  background: var(--ink);
+  color: #fff;
+}

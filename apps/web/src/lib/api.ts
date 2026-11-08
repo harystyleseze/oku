@@ -79,6 +79,7 @@ export interface ExportJob {
   endMs: number;
   title: string;
   theme: string;
+  captions: boolean;
   status: "queued" | "rendering" | "ready" | "failed";
   outputKey: string | null;
   error: string | null;
@@ -93,9 +94,35 @@ export interface Conversation {
   endedAt: string | null;
   durationMs: number | null;
   error: string | null;
+  transcriptStatus: "none" | "queued" | "running" | "ready" | "failed";
+  transcriptError: string | null;
   room: { slug: string; title: string };
   participants: ParticipantSummary[];
   exports: ExportJob[];
+}
+
+export interface TranscriptWord {
+  w: string;
+  s: number;
+  e: number;
+}
+
+export interface TranscriptSegment {
+  participantId: string;
+  start: number;
+  end: number;
+  text: string;
+  words: TranscriptWord[];
+}
+
+export interface Transcript {
+  language: string | null;
+  speakers: { participantId: string; name: string; color: string }[];
+  segments: TranscriptSegment[];
+}
+
+export interface Features {
+  transcription: boolean;
 }
 
 export interface ConversationListItem {

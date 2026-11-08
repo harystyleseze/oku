@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CoverPreview } from "@/components/CoverPreview";
+import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { TopBar } from "@/components/TopBar";
 import { Waveform } from "@/components/Waveform";
-import { API_URL, api, ApiError, formatDate, formatDuration, type Conversation, type Peaks, type Preset } from "@/lib/api";
+import { API_URL, api, ApiError, formatDate, formatDuration, type Conversation, type Features, type Peaks, type Preset, type Transcript } from "@/lib/api";
 import { useUser } from "@/lib/useUser";
 
 export default function StudioPage() {
@@ -17,6 +18,8 @@ export default function StudioPage() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [peaks, setPeaks] = useState<Peaks | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
+  const [features, setFeatures] = useState<Features>({ transcription: false });
+  const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Player
@@ -30,6 +33,7 @@ export default function StudioPage() {
   const [endMs, setEndMs] = useState(60_000);
   const [clipTitle, setClipTitle] = useState("");
   const [theme, setTheme] = useState<"night" | "day">("night");
+  const [captions, setCaptions] = useState(true);
   const [creating, setCreating] = useState(false);
   const [clipError, setClipError] = useState<string | null>(null);
 
@@ -49,7 +53,10 @@ export default function StudioPage() {
       return;
     }
     void load().catch((e) => setError(e instanceof ApiError ? e.message : "Could not load this conversation."));
-    void api<{ presets: Preset[] }>("/presets").then((r) => setPresets(r.presets));
+    void api<{ presets: Preset[]; features: Features }>("/presets").then((r) => {
+      setPresets(r.presets);
+      setFeatures(r.features);
+    });
   }, [user, loading, router, load, id]);
 
   // Poll while the server is still working on it.
@@ -58,6 +65,8 @@ export default function StudioPage() {
     const busy =
       conversation.status === "processing" ||
       conversation.status === "recording" ||
+      conversation.transcriptStatus === "queued" ||
+      conversation.transcriptStatus === "running" ||
       conversation.exports.some((e) => e.status === "queued" || e.status === "rendering");
     if (!busy) return;
     const t = setInterval(() => void load().catch(() => {}), 3000);
@@ -76,6 +85,12 @@ export default function StudioPage() {
   useEffect(() => {
     if (conversation && !clipTitle) setClipTitle(conversation.title);
   }, [conversation, clipTitle]);
+
+  useEffect(() => {
+    if (conversation?.transcriptStatus === "ready" && !transcript) {
+      void api<Transcript>(`/conversations/${id}/transcript`).then(setTranscript);
+    }
+  }, [conversation, transcript, id]);
 
   const preset = presets.find((p) => p.id === platform);
   const durationMs = conversation?.durationMs ?? 0;
@@ -123,7 +138,14 @@ export default function StudioPage() {
     try {
       await api(`/conversations/${id}/exports`, {
         method: "POST",
-        json: { platform, startMs: Math.round(startMs), endMs: Math.round(endMs), title: clipTitle, theme },
+        json: {
+          platform,
+          startMs: Math.round(startMs),
+          endMs: Math.round(endMs),
+          title: clipTitle,
+          theme,
+          captions: captions && conversation?.transcriptStatus === "ready",
+        },
       });
       await load();
     } catch (e) {
@@ -330,6 +352,13 @@ export default function StudioPage() {
                     </div>
                   </div>
 
+                  {conversation.transcriptStatus === "ready" && (
+                    <label className="checkbox">
+                      <input type="checkbox" checked={captions} onChange={(e) => setCaptions(e.target.checked)} />
+                      <span>Burn in captions, coloured by speaker</span>
+                    </label>
+                  )}
+
                   {clipError && <p className="error">{clipError}</p>}
                   <div>
                     <button className="btn large" onClick={createClip} disabled={creating || overLimit || !clipTitle.trim()}>
@@ -355,6 +384,20 @@ export default function StudioPage() {
               </div>
             </section>
 
+            <TranscriptPanel
+              conversation={conversation}
+              transcript={transcript}
+              transcriptionAvailable={features.transcription}
+              timeMs={timeMs}
+              onSeek={(ms) => seek(ms / durationMs)}
+              onSetStart={(ms) => setStartMs(Math.min(ms, endMs - 1000))}
+              onSetEnd={(ms) => setEndMs(Math.max(ms, startMs + 1000))}
+              onTranscribe={async () => {
+                await api(`/conversations/${id}/transcribe`, { method: "POST" });
+                await load();
+              }}
+            />
+
             <section className="stack">
               <h2>Clips</h2>
               {conversation.exports.length === 0 ? (
@@ -369,6 +412,7 @@ export default function StudioPage() {
                           <strong>{e.title}</strong>
                           <div className="muted small">
                             {p?.label ?? e.platform} · {formatDuration(e.startMs)}–{formatDuration(e.endMs)} ({formatDuration(e.endMs - e.startMs)}) · {e.theme}
+                            {e.captions ? " · captions" : ""}
                           </div>
                           {e.status === "failed" && <div className="error">{e.error}</div>}
                         </div>

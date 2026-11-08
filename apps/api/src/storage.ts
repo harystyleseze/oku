@@ -131,5 +131,6 @@ export const keys = {
   track: (conversationId: string, trackId: string) => `conversations/${conversationId}/tracks/${trackId}.m4a`,
   mixed: (conversationId: string) => `conversations/${conversationId}/mixed.m4a`,
   peaks: (conversationId: string) => `conversations/${conversationId}/peaks.json`,
+  transcript: (conversationId: string) => `conversations/${conversationId}/transcript.json`,
   export: (conversationId: string, exportId: string) => `conversations/${conversationId}/exports/${exportId}.mp4`,
 };
