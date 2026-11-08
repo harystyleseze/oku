@@ -2,7 +2,7 @@
 
 Talk naturally. Oku records every voice in a call on its own track and turns the conversation into clips worth sharing.
 
-This repository holds **the Space** (rooms, invite links, audio calls, per-speaker recording that survives bad connections) and **the Studio** (playback, downloads, trimming to each platform's length, an animated waveform cover exported as MP4, and, when a transcription key is configured, a speaker-exact transcript with burned-in captions). The Network comes later.
+This repository holds **the Space** (rooms, invite links, audio calls, per-speaker recording that survives bad connections) and **the Studio** (playback, downloads, trimming to each platform's length, an animated waveform cover exported as MP4, and, when AI keys are configured, a speaker-exact transcript, burned-in captions, and an AI producer that suggests the moments worth clipping). The Network comes later.
 
 ## What is in the box
 
@@ -21,6 +21,7 @@ How a conversation flows through the system:
 4. **Host presses Stop.** Each browser finalises its track. When all tracks are in (or 90 s after stop, if someone vanished), the API stitches the parts, aligns the tracks to a shared timeline, transcodes them to AAC, mixes them, and computes waveform peaks.
 5. **Studio.** The host plays the mix, downloads the full conversation or any single voice, picks a platform (TikTok, Reels, Shorts, X, YouTube), trims, titles, and exports. ffmpeg renders a video where each speaker has their own coloured wave that moves only when they talk.
 6. **Transcript (optional).** With `TRANSCRIPTION_API_KEY` set, each speaker's track is transcribed on its own, so speaker labels are exact without diarisation. Silence is cut out first so the model never sees the long gaps while the other person talks. The Studio shows the transcript by speaker (click a word to jump, "Start here"/"End here" to set a clip, search to find a moment), offers `.txt`/`.srt` downloads, and can burn speaker-coloured captions into clips.
+7. **Moments (optional).** With `HIGHLIGHTS_API_KEY` and `HIGHLIGHTS_MODEL` set, a text model reads the transcript and suggests the moments worth sharing: each with a hook title, a category (funny, emotional, insight, story, debate, advice), a one-line note for the host and a ready-to-paste social caption. The model answers with transcript line numbers, never timestamps, so every suggested clip starts at the beginning of a sentence and ends at the end of one; Oku keeps each between 8 and 90 seconds and drops overlaps. In the Studio the host can preview a moment, load it into the clip maker, or make a clip of every moment for the chosen platform in one click.
 
 ## Run it locally
 
@@ -39,7 +40,11 @@ npm run dev               # API on :4000, web on :3000
 
 Open http://localhost:3000, create an account, create a room, and open the room link in a second browser (or an incognito window) to be the guest.
 
-**Transcription** needs an OpenAI-compatible `/audio/transcriptions` endpoint. Set `TRANSCRIPTION_API_KEY` (and, for a provider other than OpenAI, `TRANSCRIPTION_BASE_URL` and `TRANSCRIPTION_MODEL`; Groq's `whisper-large-v3` works and is inexpensive). Without a key everything else works and the Studio says transcription isn't set up. To develop the transcript features without a key, run `node apps/api/scripts/mock-transcriber.mjs` and point `TRANSCRIPTION_BASE_URL` at `http://localhost:4100/v1` with any `TRANSCRIPTION_API_KEY`; it returns placeholder words with real timing.
+**AI features are optional and off by default.** Without keys everything else works.
+
+- **Transcription** needs an OpenAI-compatible `/audio/transcriptions` endpoint: set `TRANSCRIPTION_API_KEY`, plus `TRANSCRIPTION_BASE_URL` and `TRANSCRIPTION_MODEL` for a provider other than OpenAI. Groq's `whisper-large-v3` works and is inexpensive.
+- **Moments** need an OpenAI-compatible `/chat/completions` endpoint and transcription turned on: set `HIGHLIGHTS_API_KEY`, `HIGHLIGHTS_BASE_URL` and `HIGHLIGHTS_MODEL`. There is no default model on purpose, because model names change often; on Groq, `openai/gpt-oss-120b` is a good choice.
+- **Developing without keys:** run `node apps/api/scripts/mock-ai.mjs` and point both base URLs at `http://localhost:4100/v1` (any key, `HIGHLIGHTS_MODEL=mock`). The mock returns placeholder words with real timing and evenly spaced moments in the exact shape the real model returns, so every screen can be exercised. It does not judge what is interesting; the quality of real suggestions depends on the model you choose.
 
 Recordings are stored under `apps/api/data/` by default. To use an S3-compatible bucket instead, set `STORAGE_DRIVER=s3` and the `S3_*` variables (the compose file includes MinIO if you want to try that locally: `docker compose up -d minio`, then create a bucket named `oku` at http://localhost:9001).
 
@@ -73,7 +78,7 @@ The two apps deploy independently. Both are plain Node processes.
 
 ## What is deliberately not here yet
 
-Highlight detection, transcript-based editing, direct publishing to social platforms, creator profiles and discovery. Each has a clear place to plug in (a job kind in `apps/api/src/queue.ts`, a new export parameter, a new table) without reworking what exists.
+Transcript-based editing, direct publishing to social platforms, creator profiles and discovery. Each has a clear place to plug in (a job kind in `apps/api/src/queue.ts`, a new export parameter, a new table) without reworking what exists.
 
 ## Known limits of this build
 

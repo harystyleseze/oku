@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CoverPreview } from "@/components/CoverPreview";
+import { MomentsPanel } from "@/components/MomentsPanel";
 import { TranscriptPanel } from "@/components/TranscriptPanel";
 import { TopBar } from "@/components/TopBar";
 import { Waveform } from "@/components/Waveform";
-import { API_URL, api, ApiError, formatDate, formatDuration, type Conversation, type Features, type Peaks, type Preset, type Transcript } from "@/lib/api";
+import { API_URL, api, ApiError, formatDate, formatDuration, type Conversation, type Features, type Highlight, type Peaks, type Preset, type Transcript } from "@/lib/api";
 import { useUser } from "@/lib/useUser";
 
 export default function StudioPage() {
@@ -18,7 +19,7 @@ export default function StudioPage() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [peaks, setPeaks] = useState<Peaks | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [features, setFeatures] = useState<Features>({ transcription: false });
+  const [features, setFeatures] = useState<Features>({ transcription: false, highlights: false });
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +27,9 @@ export default function StudioPage() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [timeMs, setTimeMs] = useState(0);
+  // When previewing a moment, playback stops at its end.
+  const [playingRange, setPlayingRange] = useState<{ startMs: number; endMs: number } | null>(null);
+  const clipMakerRef = useRef<HTMLElement>(null);
 
   // Clip maker
   const [platform, setPlatform] = useState("tiktok");
@@ -67,6 +71,8 @@ export default function StudioPage() {
       conversation.status === "recording" ||
       conversation.transcriptStatus === "queued" ||
       conversation.transcriptStatus === "running" ||
+      conversation.highlightsStatus === "queued" ||
+      conversation.highlightsStatus === "running" ||
       conversation.exports.some((e) => e.status === "queued" || e.status === "rendering");
     if (!busy) return;
     const t = setInterval(() => void load().catch(() => {}), 3000);
@@ -119,8 +125,42 @@ export default function StudioPage() {
   function togglePlay() {
     const a = audioRef.current;
     if (!a) return;
+    setPlayingRange(null);
     if (a.paused) void a.play();
     else a.pause();
+  }
+
+  function playMoment(h: Highlight) {
+    const a = audioRef.current;
+    if (!a) return;
+    a.currentTime = h.startMs / 1000;
+    setTimeMs(h.startMs);
+    setPlayingRange({ startMs: h.startMs, endMs: h.endMs });
+    void a.play();
+  }
+
+  /** Clamps a moment to the selected platform's limit (moments are at most 90 s already). */
+  function fitToPreset(h: Highlight) {
+    const max = preset?.maxSeconds ? preset.maxSeconds * 1000 : Infinity;
+    return { startMs: Math.round(h.startMs), endMs: Math.round(Math.min(h.endMs, h.startMs + max)) };
+  }
+
+  function applyMoment(h: Highlight) {
+    const r = fitToPreset(h);
+    setStartMs(r.startMs);
+    setEndMs(r.endMs);
+    setClipTitle(h.title);
+    clipMakerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function makeAllClips() {
+    for (const h of conversation?.highlights ?? []) {
+      await api(`/conversations/${id}/exports`, {
+        method: "POST",
+        json: { platform, ...fitToPreset(h), title: h.title, theme, captions: captions && conversation?.transcriptStatus === "ready" },
+      });
+    }
+    await load();
   }
 
   async function saveTitle() {
@@ -292,12 +332,34 @@ export default function StudioPage() {
                 crossOrigin="use-credentials"
                 preload="metadata"
                 onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                onTimeUpdate={(e) => setTimeMs(e.currentTarget.currentTime * 1000)}
+                onPause={() => {
+                  setPlaying(false);
+                  setPlayingRange(null);
+                }}
+                onTimeUpdate={(e) => {
+                  const t = e.currentTarget.currentTime * 1000;
+                  setTimeMs(t);
+                  if (playingRange && t >= playingRange.endMs) e.currentTarget.pause();
+                }}
               />
             </section>
 
-            <section className="stack">
+            {features.highlights && (
+              <MomentsPanel
+                conversation={conversation}
+                preset={preset}
+                playingRange={playingRange}
+                onPlay={playMoment}
+                onUse={applyMoment}
+                onMakeAll={makeAllClips}
+                onFind={async () => {
+                  await api(`/conversations/${id}/highlights`, { method: "POST" });
+                  await load();
+                }}
+              />
+            )}
+
+            <section className="stack" ref={clipMakerRef} style={{ scrollMarginTop: 16 }}>
               <h2>Make a clip</h2>
               <div className="studio-grid">
                 <div className="panel stack" style={{ gap: 18 }}>

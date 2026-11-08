@@ -3,6 +3,7 @@ import { db } from "./db.js";
 import { conversations, exports } from "./schema.js";
 import { processConversation, renderExport } from "./processing.js";
 import { transcribeConversation } from "./transcription.js";
+import { findHighlights } from "./highlights.js";
 
 /**
  * A single in-process job queue. ffmpeg work runs one job at a time so a busy
@@ -12,6 +13,7 @@ import { transcribeConversation } from "./transcription.js";
 type Job =
   | { kind: "process"; conversationId: string }
   | { kind: "transcribe"; conversationId: string }
+  | { kind: "highlights"; conversationId: string }
   | { kind: "export"; exportId: string };
 
 const pending: Job[] = [];
@@ -30,6 +32,7 @@ async function drain() {
     try {
       if (job.kind === "process") await processConversation(job.conversationId);
       else if (job.kind === "transcribe") await transcribeConversation(job.conversationId);
+      else if (job.kind === "highlights") await findHighlights(job.conversationId);
       else await renderExport(job.exportId);
     } catch (err) {
       console.error(`[queue] ${job.kind} failed:`, err instanceof Error ? err.message : err);
@@ -48,6 +51,12 @@ export async function resumeInterruptedJobs() {
     .from(conversations)
     .where(inArray(conversations.transcriptStatus, ["queued", "running"]));
   for (const c of pendingTranscripts) enqueue({ kind: "transcribe", conversationId: c.id });
+
+  const pendingHighlights = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(inArray(conversations.highlightsStatus, ["queued", "running"]));
+  for (const c of pendingHighlights) enqueue({ kind: "highlights", conversationId: c.id });
 
   const pendingExports = await db
     .select({ id: exports.id })

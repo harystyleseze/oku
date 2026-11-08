@@ -33,6 +33,11 @@ export const config = {
     model: process.env.TRANSCRIPTION_MODEL || "whisper-1",
     language: process.env.TRANSCRIPTION_LANGUAGE || undefined,
   },
+  highlights: {
+    apiKey: process.env.HIGHLIGHTS_API_KEY || "",
+    baseUrl: process.env.HIGHLIGHTS_BASE_URL || "https://api.openai.com/v1",
+    model: process.env.HIGHLIGHTS_MODEL || "",
+  },
   ice: {
     stunUrl: process.env.STUN_URL ?? "stun:stun.l.google.com:19302",
     turnUrl: process.env.TURN_URL || undefined,

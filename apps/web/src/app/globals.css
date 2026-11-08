@@ -564,3 +564,63 @@ main.page {
   background: var(--ink);
   color: #fff;
 }
+
+/* ---------- moments ---------- */
+
+.moment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 18px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.moment:first-child {
+  border-top: 0;
+}
+
+.moment-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.moment-post {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  border-left: 2px solid var(--line-strong);
+  padding-left: 10px;
+}
+
+.moment-post p {
+  color: var(--ink-soft);
+}
+
+.moment-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .moment {
+    grid-template-columns: 1fr;
+  }
+  .moment-post {
+    flex-direction: column;
+    gap: 4px;
+  }
+}

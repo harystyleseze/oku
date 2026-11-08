@@ -9,6 +9,8 @@ import { db } from "./db.js";
 import { conversations } from "./schema.js";
 import { storage, keys } from "./storage.js";
 import { runFfmpeg } from "./ffmpeg.js";
+import { highlightsEnabled } from "./highlights.js";
+import { enqueue } from "./queue.js";
 
 /**
  * Transcription. Because every speaker has their own track, each voice is
@@ -134,7 +136,10 @@ async function transcribeFile(file: string): Promise<ProviderResponse> {
       return (await res.json()) as ProviderResponse;
     } catch (err) {
       if (err instanceof FatalError) throw err;
-      lastError = err instanceof Error ? err : new Error(String(err));
+      lastError =
+        err instanceof Error && err.message.startsWith("Transcription service")
+          ? err
+          : new Error(`Could not reach the transcription service at ${baseUrl}.`);
       await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
     }
   }
@@ -240,7 +245,12 @@ export async function transcribeConversation(conversationId: string): Promise<vo
     transcript.segments.sort((a, b) => a.start - b.start);
     const key = keys.transcript(conversationId);
     await storage.put(key, Buffer.from(JSON.stringify(transcript)), "application/json");
-    await db.update(conversations).set({ transcriptStatus: "ready", transcriptKey: key }).where(eq(conversations.id, conversationId));
+    const autoHighlights = highlightsEnabled();
+    await db
+      .update(conversations)
+      .set({ transcriptStatus: "ready", transcriptKey: key, ...(autoHighlights ? { highlightsStatus: "queued" as const } : {}) })
+      .where(eq(conversations.id, conversationId));
+    if (autoHighlights) enqueue({ kind: "highlights", conversationId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await db.update(conversations).set({ transcriptStatus: "failed", transcriptError: message }).where(eq(conversations.id, conversationId));

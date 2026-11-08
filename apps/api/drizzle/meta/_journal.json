@@ -15,6 +15,13 @@
       "when": 1794103550551,
       "tag": "0001_transcripts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794130083084,
+      "tag": "0002_highlights",
+      "breakpoints": true
     }
   ]
 }

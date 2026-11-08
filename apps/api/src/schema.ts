@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { boolean, index, integer, pgEnum, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 const id = () => uuid("id").primaryKey().defaultRandom();
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -37,6 +37,15 @@ export const rooms = pgTable(
 );
 
 export const conversationStatus = pgEnum("conversation_status", ["recording", "processing", "ready", "failed"]);
+export interface Highlight {
+  startMs: number;
+  endMs: number;
+  title: string;
+  category: "funny" | "emotional" | "insight" | "story" | "debate" | "advice";
+  why: string;
+  post: string;
+}
+
 export const transcriptStatus = pgEnum("transcript_status", ["none", "queued", "running", "ready", "failed"]);
 
 export const conversations = pgTable(
@@ -55,6 +64,10 @@ export const conversations = pgTable(
     transcriptStatus: transcriptStatus("transcript_status").notNull().default("none"),
     transcriptKey: text("transcript_key"), // storage key of transcript JSON
     transcriptError: text("transcript_error"),
+    // Suggested moments, written by the highlights job once the transcript exists.
+    highlightsStatus: transcriptStatus("highlights_status").notNull().default("none"),
+    highlights: jsonb("highlights").$type<Highlight[]>(),
+    highlightsError: text("highlights_error"),
   },
   (t) => [index("conversations_room_idx").on(t.roomId)],
 );

@@ -94,11 +94,25 @@ export interface Conversation {
   endedAt: string | null;
   durationMs: number | null;
   error: string | null;
-  transcriptStatus: "none" | "queued" | "running" | "ready" | "failed";
+  transcriptStatus: JobStatus;
   transcriptError: string | null;
+  highlightsStatus: JobStatus;
+  highlights: Highlight[] | null;
+  highlightsError: string | null;
   room: { slug: string; title: string };
   participants: ParticipantSummary[];
   exports: ExportJob[];
+}
+
+export type JobStatus = "none" | "queued" | "running" | "ready" | "failed";
+
+export interface Highlight {
+  startMs: number;
+  endMs: number;
+  title: string;
+  category: "funny" | "emotional" | "insight" | "story" | "debate" | "advice";
+  why: string;
+  post: string;
 }
 
 export interface TranscriptWord {
@@ -123,6 +137,7 @@ export interface Transcript {
 
 export interface Features {
   transcription: boolean;
+  highlights: boolean;
 }
 
 export interface ConversationListItem {

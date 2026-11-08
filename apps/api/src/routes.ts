@@ -12,6 +12,7 @@ import { PRESETS, THEMES, presetById } from "./presets.js";
 import { processIfReady } from "./signaling.js";
 import { enqueue } from "./queue.js";
 import { loadTranscript, transcriptToSrt, transcriptToText, transcriptionEnabled } from "./transcription.js";
+import { highlightsEnabled } from "./highlights.js";
 
 export const router = Router();
 
@@ -78,7 +79,7 @@ function publicUser(u: { id: string; email: string; displayName: string }) {
 // ---------- Presets ----------
 
 router.get("/presets", (_req, res) => {
-  res.json({ presets: PRESETS, themes: THEMES, features: { transcription: transcriptionEnabled() } });
+  res.json({ presets: PRESETS, themes: THEMES, features: { transcription: transcriptionEnabled(), highlights: transcriptionEnabled() && highlightsEnabled() } });
 });
 
 // ---------- Rooms ----------
@@ -302,6 +303,18 @@ router.post("/conversations/:id/transcribe", requireUser, async (req, res) => {
   if (c.transcriptStatus === "queued" || c.transcriptStatus === "running") return res.json({ ok: true });
   await db.update(conversations).set({ transcriptStatus: "queued", transcriptError: null }).where(eq(conversations.id, c.id));
   enqueue({ kind: "transcribe", conversationId: c.id });
+  res.json({ ok: true });
+});
+
+// Ask the AI producer to (re)read the transcript and suggest moments.
+router.post("/conversations/:id/highlights", requireUser, async (req, res) => {
+  const c = await ownedConversation(req, res);
+  if (!c) return;
+  if (!highlightsEnabled()) return fail(res, 409, "Highlights are not set up on this server.");
+  if (c.transcriptStatus !== "ready") return fail(res, 409, "The transcript isn't ready yet.");
+  if (c.highlightsStatus === "queued" || c.highlightsStatus === "running") return res.json({ ok: true });
+  await db.update(conversations).set({ highlightsStatus: "queued", highlightsError: null }).where(eq(conversations.id, c.id));
+  enqueue({ kind: "highlights", conversationId: c.id });
   res.json({ ok: true });
 });
 
